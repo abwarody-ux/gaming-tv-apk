@@ -1,0 +1,3 @@
+-keep class io.socket.** { *; }
+-keep class com.gamingtv.app.** { *; }
+-dontwarn io.socket.**
