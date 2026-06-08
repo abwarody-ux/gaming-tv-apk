@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- Grille futuriste sol -->
+    <View
+        android:id="@+id/gridFloor"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/grid_floor"
+        android:alpha="0.4" />
+
+    <!-- Container logo centré -->
+    <LinearLayout
+        android:id="@+id/logoContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:alpha="0">
+
+        <!-- GAMING -->
+        <TextView
+            android:id="@+id/textGaming"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="GAMING"
+            android:fontFamily="@font/orbitron_black"
+            android:textSize="96sp"
+            android:letterSpacing="0.3"
+            android:textColor="#00E5FF"
+            android:shadowColor="#00E5FF"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="40"
+            android:includeFontPadding="false"
+            android:lineSpacingExtra="0dp" />
+
+        <!-- TV — collé directement sous GAMING -->
+        <TextView
+            android:id="@+id/textTV"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="TV"
+            android:fontFamily="@font/orbitron_black"
+            android:textSize="96sp"
+            android:letterSpacing="0.5"
+            android:textColor="#00E5FF"
+            android:shadowColor="#00E5FF"
+            android:shadowDx="0"
+            android:shadowDy="0"
+            android:shadowRadius="40"
+            android:includeFontPadding="false"
+            android:layout_marginTop="-16dp" />
+
+        <!-- Ligne séparatrice néon -->
+        <View
+            android:layout_width="300dp"
+            android:layout_height="1dp"
+            android:background="#4D00E5FF"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Tagline -->
+        <TextView
+            android:id="@+id/textTagline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="KINSHASA  ·  DRC  ·  EST. 2026"
+            android:fontFamily="@font/orbitron_regular"
+            android:textSize="14sp"
+            android:letterSpacing="0.4"
+            android:textColor="#4D00E5FF"
+            android:alpha="0" />
+
+    </LinearLayout>
+
+    <!-- Scan lines overlay -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/scanlines"
+        android:alpha="0.2" />
+
+    <!-- Coins décoratifs -->
+    <View android:id="@+id/cornerTL"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="20dp"
+        android:background="@drawable/corner_tl"
+        android:alpha="0" />
+    <View android:id="@+id/cornerTR"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="20dp"
+        android:background="@drawable/corner_tr"
+        android:alpha="0" />
+    <View android:id="@+id/cornerBL"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="20dp"
+        android:background="@drawable/corner_bl"
+        android:alpha="0" />
+    <View android:id="@+id/cornerBR"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="20dp"
+        android:background="@drawable/corner_br"
+        android:alpha="0" />
+
+</FrameLayout>

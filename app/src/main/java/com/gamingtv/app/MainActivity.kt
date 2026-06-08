@@ -3,15 +3,23 @@ package com.gamingtv.app
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.graphics.Color
+import android.media.MediaPlayer
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.animation.AlphaAnimation
 import android.view.animation.Animation
+import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import com.gamingtv.app.databinding.ActivityMainBinding
+import okhttp3.*
+import org.json.JSONObject
+import java.io.File
+import java.io.IOException
 
 class MainActivity : AppCompatActivity() {
 
@@ -24,6 +32,18 @@ class MainActivity : AppCompatActivity() {
     private var totalDurationSeconds: Int = 0
     private var alertDismissJob: Runnable? = null
     private var blinkAnimation: Animation? = null
+
+    // Kiosk & Pub
+    private var kioskMode: Boolean = true
+    private var videosPath: String = "/storage/videos/"
+    private var pubDurationSeconds: Int = 30
+    private var inactivityBeforePubSeconds: Int = 60
+    private var inactivityHandler: Handler = Handler(Looper.getMainLooper())
+    private var inactivityRunnable: Runnable? = null
+    private var videoView: VideoView? = null
+    private var videoFiles: List<File> = emptyList()
+    private var currentVideoIndex: Int = 0
+    private var isPubPlaying: Boolean = false
 
     companion object {
         private const val TAG = "MainActivity"
@@ -41,22 +61,175 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         setupSocketManager()
         setupTimerManager()
-
         socketManager.connect()
+
+        // Charger les paramètres kiosk depuis l'API
+        loadKioskSettings()
+
         Log.d(TAG, "App started — TV_ID: ${Config.TV_ID}")
     }
 
+    // ── KIOSK MODE ──
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (kioskMode) {
+            // Bloquer retour, home, recent apps en mode kiosk
+            if (keyCode == KeyEvent.KEYCODE_BACK ||
+                keyCode == KeyEvent.KEYCODE_HOME ||
+                keyCode == KeyEvent.KEYCODE_APP_SWITCH ||
+                keyCode == KeyEvent.KEYCODE_MENU) {
+                return true // Consommer l'event
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onBackPressed() {
+        if (kioskMode) return // Bloquer
+        super.onBackPressed()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            // Maintenir le fullscreen immersive
+            window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            )
+            // En mode kiosk, revenir si l'app perd le focus
+            if (kioskMode) {
+                window.decorView.postDelayed({
+                    startLockTask()
+                }, 100)
+            }
+        }
+    }
+
+    // ── CHARGER PARAMÈTRES KIOSK ──
+    private fun loadKioskSettings() {
+        val client = OkHttpClient()
+        val token = Config.TOKEN
+        val request = Request.Builder()
+            .url("${Config.BACKEND_URL}/settings")
+            .addHeader("Authorization", "Bearer $token")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "Failed to load kiosk settings: ${e.message}")
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body?.string() ?: return
+                try {
+                    val json = JSONObject(body)
+                    kioskMode = json.optBoolean("kioskMode", true)
+                    videosPath = json.optString("videosPath", "/storage/videos/")
+                    pubDurationSeconds = json.optInt("pubDurationSeconds", 30)
+                    inactivityBeforePubSeconds = json.optInt("inactivityBeforePubSeconds", 60)
+
+                    mainHandler.post {
+                        Log.d(TAG, "Kiosk: $kioskMode, Pub: ${inactivityBeforePubSeconds}s inactivity")
+                        if (kioskMode) {
+                            try { startLockTask() } catch (e: Exception) { }
+                        }
+                        // Charger les vidéos pub
+                        loadVideoFiles()
+                        // Démarrer le timer d'inactivité si sur écran d'attente
+                        startInactivityTimer()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Parse error: ${e.message}")
+                }
+            }
+        })
+    }
+
+    // ── PUB VIDÉO ──
+    private fun loadVideoFiles() {
+        val folder = File(videosPath)
+        videoFiles = if (folder.exists() && folder.isDirectory) {
+            folder.listFiles { f -> f.extension.lowercase() == "mp4" }
+                ?.sortedBy { it.name }
+                ?: emptyList()
+        } else emptyList()
+        Log.d(TAG, "Videos found: ${videoFiles.size}")
+    }
+
+    private fun startInactivityTimer() {
+        stopInactivityTimer()
+        if (videoFiles.isEmpty() || isPubPlaying || currentSession != null) return
+
+        inactivityRunnable = Runnable {
+            if (currentSession == null) {
+                startPub()
+            }
+        }
+        inactivityHandler.postDelayed(inactivityRunnable!!, inactivityBeforePubSeconds * 1000L)
+        Log.d(TAG, "Inactivity timer started: ${inactivityBeforePubSeconds}s")
+    }
+
+    private fun stopInactivityTimer() {
+        inactivityRunnable?.let { inactivityHandler.removeCallbacks(it) }
+        inactivityRunnable = null
+    }
+
+    private fun startPub() {
+        if (videoFiles.isEmpty()) return
+        isPubPlaying = true
+        Log.d(TAG, "Starting pub video")
+
+        // Créer VideoView dynamiquement
+        videoView = VideoView(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        // Ajouter sur l'écran d'attente
+        val rootLayout = binding.root as? android.widget.FrameLayout
+        rootLayout?.addView(videoView)
+
+        playNextVideo()
+    }
+
+    private fun playNextVideo() {
+        if (!isPubPlaying || videoFiles.isEmpty()) return
+        val file = videoFiles[currentVideoIndex % videoFiles.size]
+        currentVideoIndex++
+
+        videoView?.apply {
+            setVideoURI(Uri.fromFile(file))
+            setOnCompletionListener {
+                if (isPubPlaying) playNextVideo()
+            }
+            setOnErrorListener { _, _, _ ->
+                if (isPubPlaying) playNextVideo()
+                true
+            }
+            start()
+        }
+    }
+
+    private fun stopPub() {
+        if (!isPubPlaying) return
+        isPubPlaying = false
+        videoView?.stopPlayback()
+        val rootLayout = binding.root as? android.widget.FrameLayout
+        rootLayout?.removeView(videoView)
+        videoView = null
+        Log.d(TAG, "Pub stopped")
+    }
+
+    // ── UI SETUP ──
     private fun setupUI() {
-        // TV ID display
         binding.tvId.text = "TV ${Config.TV_ID}"
-
-        // Console badge
         binding.consoleBadge.text = "—"
-
-        // Hide alert initially
         binding.alertContainer.visibility = View.GONE
-
-        // Status initial
         showWaitingState()
     }
 
@@ -107,11 +280,15 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // ── Session handlers ──
+    // ── SESSION HANDLERS ──
     private fun handleSessionStart(session: SessionState) {
         Log.d(TAG, "Session started: ${session.ticketNumber}")
         currentSession = session
         totalDurationSeconds = session.timeRemainingSeconds
+
+        // Arrêter la pub et le timer d'inactivité
+        stopPub()
+        stopInactivityTimer()
 
         binding.ticketNumber.text = "#${session.ticketNumber}"
         binding.consoleBadge.text = session.consoleType
@@ -122,7 +299,6 @@ class MainActivity : AppCompatActivity() {
         updateTimerDisplay(session.timeRemainingSeconds)
         updateProgressBar(session.timeRemainingSeconds)
 
-        // Show session overlay
         binding.sessionOverlay.visibility = View.VISIBLE
         binding.waitingScreen.visibility = View.GONE
         binding.pauseScreen.visibility = View.GONE
@@ -132,14 +308,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleTimeSync(seconds: Int, status: String) {
-        // Réconciliation backend — source de vérité
         timerManager.syncTime(seconds)
         updateTimerDisplay(seconds)
         updateProgressBar(seconds)
     }
 
     private fun handleSessionPause() {
-        Log.d(TAG, "Session paused")
         timerManager.pause()
         binding.statusText.text = "EN PAUSE"
         binding.statusText.setTextColor(Color.parseColor(COLOR_ORANGE))
@@ -148,7 +322,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleSessionResume() {
-        Log.d(TAG, "Session resumed")
         timerManager.resume()
         binding.statusText.text = "EN JEU"
         binding.statusText.setTextColor(Color.parseColor(COLOR_GREEN))
@@ -157,7 +330,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleSessionEnd(message: String) {
-        Log.d(TAG, "Session ended: $message")
         timerManager.stop()
         currentSession = null
         totalDurationSeconds = 0
@@ -168,9 +340,10 @@ class MainActivity : AppCompatActivity() {
         binding.sessionOverlay.visibility = View.GONE
         binding.pauseScreen.visibility = View.GONE
 
-        // Retour à l'écran d'attente après 5 secondes
+        // Retour écran d'attente après 5s puis timer inactivité
         mainHandler.postDelayed({
             showWaitingState()
+            startInactivityTimer()
         }, 5000)
     }
 
@@ -180,14 +353,11 @@ class MainActivity : AppCompatActivity() {
         showAlert("+$added minutes ajoutées ✓", "SUCCESS")
     }
 
-    // ── UI updates ──
+    // ── UI UPDATES ──
     private fun updateTimerDisplay(seconds: Int) {
         val min = seconds / 60
         val sec = seconds % 60
-        val timeStr = String.format("%02d:%02d", min, sec)
-        binding.timerDisplay.text = timeStr
-
-        // Couleur selon temps restant
+        binding.timerDisplay.text = String.format("%02d:%02d", min, sec)
         val color = when {
             seconds <= 60 -> COLOR_RED
             seconds <= 300 -> COLOR_ORANGE
@@ -208,12 +378,8 @@ class MainActivity : AppCompatActivity() {
                 showAlert("⚠️ 5 minutes restantes !", "WARNING")
                 startBlinkAnimation()
             }
-            seconds == 60 -> {
-                showAlert("🔴 1 minute restante !", "CRITICAL")
-            }
-            seconds <= 0 -> {
-                stopBlinkAnimation()
-            }
+            seconds == 60 -> showAlert("🔴 1 minute restante !", "CRITICAL")
+            seconds <= 0 -> stopBlinkAnimation()
         }
     }
 
@@ -237,20 +403,17 @@ class MainActivity : AppCompatActivity() {
             if (connected) Color.parseColor(COLOR_GREEN) else Color.parseColor(COLOR_RED)
         )
         binding.connectionText.text = if (connected) "EN LIGNE" else "HORS LIGNE"
-
         if (!connected && currentSession != null) {
             showAlert("Connexion perdue — timer local actif", "WARNING")
         }
     }
 
-    // ── Alert system ──
     private fun showAlert(message: String, type: String = "INFO") {
         binding.alertText.text = message
         val color = when (type) {
             "SUCCESS" -> COLOR_GREEN
             "WARNING" -> COLOR_ORANGE
-            "CRITICAL" -> COLOR_RED
-            "ERROR" -> COLOR_RED
+            "CRITICAL", "ERROR" -> COLOR_RED
             else -> COLOR_WHITE
         }
         binding.alertContainer.setBackgroundColor(
@@ -259,15 +422,11 @@ class MainActivity : AppCompatActivity() {
         binding.alertText.setTextColor(Color.parseColor(color))
         binding.alertContainer.visibility = View.VISIBLE
 
-        // Auto-dismiss après 4 secondes
         alertDismissJob?.let { mainHandler.removeCallbacks(it) }
-        alertDismissJob = Runnable {
-            binding.alertContainer.visibility = View.GONE
-        }
+        alertDismissJob = Runnable { binding.alertContainer.visibility = View.GONE }
         mainHandler.postDelayed(alertDismissJob!!, 4000)
     }
 
-    // ── Blink animation for low time ──
     private fun startBlinkAnimation() {
         blinkAnimation = AlphaAnimation(1.0f, 0.2f).apply {
             duration = 500
@@ -285,8 +444,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        stopPub()
+        stopInactivityTimer()
         timerManager.destroy()
         socketManager.disconnect()
         mainHandler.removeCallbacksAndMessages(null)
+        inactivityHandler.removeCallbacksAndMessages(null)
     }
 }
