@@ -1,9 +1,6 @@
 package com.gamingtv.app
 
-import android.animation.ObjectAnimator
-import android.animation.ValueAnimator
 import android.graphics.Color
-import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -45,8 +42,12 @@ class MainActivity : AppCompatActivity() {
     private var currentVideoIndex: Int = 0
     private var isPubPlaying: Boolean = false
 
+    // Frontend URL pour QR Code
+    private val frontendUrl = "https://gaming-tv-frontend.vercel.app"
+
     companion object {
         private const val TAG = "MainActivity"
+        private const val COLOR_CYAN = "#00E5FF"
         private const val COLOR_GREEN = "#00FF88"
         private const val COLOR_ORANGE = "#FF9500"
         private const val COLOR_RED = "#FF3355"
@@ -62,8 +63,6 @@ class MainActivity : AppCompatActivity() {
         setupSocketManager()
         setupTimerManager()
         socketManager.connect()
-
-        // Charger les paramètres kiosk depuis l'API
         loadKioskSettings()
 
         Log.d(TAG, "App started — TV_ID: ${Config.TV_ID}")
@@ -72,26 +71,24 @@ class MainActivity : AppCompatActivity() {
     // ── KIOSK MODE ──
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (kioskMode) {
-            // Bloquer retour, home, recent apps en mode kiosk
             if (keyCode == KeyEvent.KEYCODE_BACK ||
                 keyCode == KeyEvent.KEYCODE_HOME ||
                 keyCode == KeyEvent.KEYCODE_APP_SWITCH ||
                 keyCode == KeyEvent.KEYCODE_MENU) {
-                return true // Consommer l'event
+                return true
             }
         }
         return super.onKeyDown(keyCode, event)
     }
 
     override fun onBackPressed() {
-        if (kioskMode) return // Bloquer
+        if (kioskMode) return
         super.onBackPressed()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            // Maintenir le fullscreen immersive
             window.decorView.systemUiVisibility = (
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 or View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -99,29 +96,24 @@ class MainActivity : AppCompatActivity() {
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
             )
-            // En mode kiosk, revenir si l'app perd le focus
             if (kioskMode) {
-                window.decorView.postDelayed({
-                    startLockTask()
-                }, 100)
+                window.decorView.postDelayed({ startLockTask() }, 100)
             }
         }
     }
 
-    // ── CHARGER PARAMÈTRES KIOSK ──
+    // ── KIOSK SETTINGS ──
     private fun loadKioskSettings() {
         val client = OkHttpClient()
-        val token = Config.TOKEN
         val request = Request.Builder()
             .url("${Config.BACKEND_URL}/settings")
-            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Authorization", "Bearer ${Config.TOKEN}")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Log.e(TAG, "Failed to load kiosk settings: ${e.message}")
             }
-
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string() ?: return
                 try {
@@ -132,13 +124,8 @@ class MainActivity : AppCompatActivity() {
                     inactivityBeforePubSeconds = json.optInt("inactivityBeforePubSeconds", 60)
 
                     mainHandler.post {
-                        Log.d(TAG, "Kiosk: $kioskMode, Pub: ${inactivityBeforePubSeconds}s inactivity")
-                        if (kioskMode) {
-                            try { startLockTask() } catch (e: Exception) { }
-                        }
-                        // Charger les vidéos pub
+                        if (kioskMode) { try { startLockTask() } catch (e: Exception) { } }
                         loadVideoFiles()
-                        // Démarrer le timer d'inactivité si sur écran d'attente
                         startInactivityTimer()
                     }
                 } catch (e: Exception) {
@@ -148,13 +135,25 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // ── QR CODE ──
+    private fun showQrCode(ticketNumber: String, consoleType: String) {
+        val url = "$frontendUrl/addtime?tv=${Config.TV_ID}&ticket=$ticketNumber&console=$consoleType"
+        binding.qrCodeView.setQrData(url, "#$ticketNumber")
+        binding.qrCodeView.visibility = View.VISIBLE
+        binding.qrCodeViewPause.setQrData(url, "#$ticketNumber")
+        Log.d(TAG, "QR Code shown: $url")
+    }
+
+    private fun hideQrCode() {
+        binding.qrCodeView.visibility = View.GONE
+        binding.qrCodeViewPause.visibility = View.GONE
+    }
+
     // ── PUB VIDÉO ──
     private fun loadVideoFiles() {
         val folder = File(videosPath)
         videoFiles = if (folder.exists() && folder.isDirectory) {
-            folder.listFiles { f -> f.extension.lowercase() == "mp4" }
-                ?.sortedBy { it.name }
-                ?: emptyList()
+            folder.listFiles { f -> f.extension.lowercase() == "mp4" }?.sortedBy { it.name } ?: emptyList()
         } else emptyList()
         Log.d(TAG, "Videos found: ${videoFiles.size}")
     }
@@ -162,14 +161,8 @@ class MainActivity : AppCompatActivity() {
     private fun startInactivityTimer() {
         stopInactivityTimer()
         if (videoFiles.isEmpty() || isPubPlaying || currentSession != null) return
-
-        inactivityRunnable = Runnable {
-            if (currentSession == null) {
-                startPub()
-            }
-        }
+        inactivityRunnable = Runnable { if (currentSession == null) startPub() }
         inactivityHandler.postDelayed(inactivityRunnable!!, inactivityBeforePubSeconds * 1000L)
-        Log.d(TAG, "Inactivity timer started: ${inactivityBeforePubSeconds}s")
     }
 
     private fun stopInactivityTimer() {
@@ -180,20 +173,13 @@ class MainActivity : AppCompatActivity() {
     private fun startPub() {
         if (videoFiles.isEmpty()) return
         isPubPlaying = true
-        Log.d(TAG, "Starting pub video")
-
-        // Créer VideoView dynamiquement
         videoView = VideoView(this).apply {
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-
-        // Ajouter sur l'écran d'attente
-        val rootLayout = binding.root as? android.widget.FrameLayout
-        rootLayout?.addView(videoView)
-
+        (binding.root as? android.widget.FrameLayout)?.addView(videoView)
         playNextVideo()
     }
 
@@ -201,16 +187,10 @@ class MainActivity : AppCompatActivity() {
         if (!isPubPlaying || videoFiles.isEmpty()) return
         val file = videoFiles[currentVideoIndex % videoFiles.size]
         currentVideoIndex++
-
         videoView?.apply {
             setVideoURI(Uri.fromFile(file))
-            setOnCompletionListener {
-                if (isPubPlaying) playNextVideo()
-            }
-            setOnErrorListener { _, _, _ ->
-                if (isPubPlaying) playNextVideo()
-                true
-            }
+            setOnCompletionListener { if (isPubPlaying) playNextVideo() }
+            setOnErrorListener { _, _, _ -> if (isPubPlaying) playNextVideo(); true }
             start()
         }
     }
@@ -219,10 +199,8 @@ class MainActivity : AppCompatActivity() {
         if (!isPubPlaying) return
         isPubPlaying = false
         videoView?.stopPlayback()
-        val rootLayout = binding.root as? android.widget.FrameLayout
-        rootLayout?.removeView(videoView)
+        (binding.root as? android.widget.FrameLayout)?.removeView(videoView)
         videoView = null
-        Log.d(TAG, "Pub stopped")
     }
 
     // ── UI SETUP ──
@@ -235,30 +213,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSocketManager() {
         socketManager = SocketManager(
-            onSessionStart = { session ->
-                mainHandler.post { handleSessionStart(session) }
-            },
-            onTimeSync = { seconds, status ->
-                mainHandler.post { handleTimeSync(seconds, status) }
-            },
-            onSessionPause = {
-                mainHandler.post { handleSessionPause() }
-            },
-            onSessionResume = {
-                mainHandler.post { handleSessionResume() }
-            },
-            onSessionEnd = { message ->
-                mainHandler.post { handleSessionEnd(message) }
-            },
-            onAlert = { alert ->
-                mainHandler.post { showAlert(alert.message, alert.type) }
-            },
-            onTimeAdded = { added, remaining ->
-                mainHandler.post { handleTimeAdded(added, remaining) }
-            },
-            onConnectionChange = { connected ->
-                mainHandler.post { updateConnectionStatus(connected) }
-            }
+            onSessionStart = { session -> mainHandler.post { handleSessionStart(session) } },
+            onTimeSync = { seconds, status -> mainHandler.post { handleTimeSync(seconds, status) } },
+            onSessionPause = { mainHandler.post { handleSessionPause() } },
+            onSessionResume = { mainHandler.post { handleSessionResume() } },
+            onSessionEnd = { message -> mainHandler.post { handleSessionEnd(message) } },
+            onAlert = { alert -> mainHandler.post { showAlert(alert.message, alert.type) } },
+            onTimeAdded = { added, remaining -> mainHandler.post { handleTimeAdded(added, remaining) } },
+            onConnectionChange = { connected -> mainHandler.post { updateConnectionStatus(connected) } }
         )
     }
 
@@ -286,14 +248,13 @@ class MainActivity : AppCompatActivity() {
         currentSession = session
         totalDurationSeconds = session.timeRemainingSeconds
 
-        // Arrêter la pub et le timer d'inactivité
         stopPub()
         stopInactivityTimer()
 
         binding.ticketNumber.text = "#${session.ticketNumber}"
         binding.consoleBadge.text = session.consoleType
         binding.statusText.text = "EN JEU"
-        binding.statusText.setTextColor(Color.parseColor(COLOR_GREEN))
+        binding.statusText.setTextColor(Color.parseColor(COLOR_CYAN))
 
         timerManager.start(session.timeRemainingSeconds)
         updateTimerDisplay(session.timeRemainingSeconds)
@@ -303,6 +264,9 @@ class MainActivity : AppCompatActivity() {
         binding.waitingScreen.visibility = View.GONE
         binding.pauseScreen.visibility = View.GONE
         binding.endScreen.visibility = View.GONE
+
+        // ✅ Afficher QR Code
+        showQrCode(session.ticketNumber, session.consoleType)
 
         showAlert("Session démarrée ! Bonne partie 🎮", "SUCCESS")
     }
@@ -318,15 +282,18 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = "EN PAUSE"
         binding.statusText.setTextColor(Color.parseColor(COLOR_ORANGE))
         binding.pauseScreen.visibility = View.VISIBLE
+        binding.qrCodeViewPause.visibility = View.VISIBLE
         stopBlinkAnimation()
     }
 
     private fun handleSessionResume() {
         timerManager.resume()
         binding.statusText.text = "EN JEU"
-        binding.statusText.setTextColor(Color.parseColor(COLOR_GREEN))
+        binding.statusText.setTextColor(Color.parseColor(COLOR_CYAN))
         binding.pauseScreen.visibility = View.GONE
         binding.sessionOverlay.visibility = View.VISIBLE
+        binding.qrCodeViewPause.visibility = View.GONE
+        binding.qrCodeView.visibility = View.VISIBLE
     }
 
     private fun handleSessionEnd(message: String) {
@@ -335,12 +302,14 @@ class MainActivity : AppCompatActivity() {
         totalDurationSeconds = 0
         stopBlinkAnimation()
 
+        // ✅ Cacher QR Code
+        hideQrCode()
+
         binding.endMessage.text = message
         binding.endScreen.visibility = View.VISIBLE
         binding.sessionOverlay.visibility = View.GONE
         binding.pauseScreen.visibility = View.GONE
 
-        // Retour écran d'attente après 5s puis timer inactivité
         mainHandler.postDelayed({
             showWaitingState()
             startInactivityTimer()
@@ -361,7 +330,7 @@ class MainActivity : AppCompatActivity() {
         val color = when {
             seconds <= 60 -> COLOR_RED
             seconds <= 300 -> COLOR_ORANGE
-            else -> COLOR_GREEN
+            else -> COLOR_CYAN
         }
         binding.timerDisplay.setTextColor(Color.parseColor(color))
     }
@@ -389,6 +358,7 @@ class MainActivity : AppCompatActivity() {
         binding.pauseScreen.visibility = View.GONE
         binding.endScreen.visibility = View.GONE
         binding.alertContainer.visibility = View.GONE
+        hideQrCode()
         binding.ticketNumber.text = "—"
         binding.consoleBadge.text = "—"
         binding.statusText.text = "EN ATTENTE"
