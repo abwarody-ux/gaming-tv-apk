@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0A0D14">
+
+    <!-- Logo -->
+    <TextView
+        android:id="@+id/logoText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🎮"
+        android:textSize="64sp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintVertical_bias="0.15"
+        app:layout_constraintBottom_toBottomOf="parent"/>
+
+    <!-- Titre -->
+    <TextView
+        android:id="@+id/titleText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="KASMOK Digital"
+        android:textSize="32sp"
+        android:textStyle="bold"
+        android:textColor="#00E5FF"
+        android:fontFamily="sans-serif-black"
+        app:layout_constraintTop_toBottomOf="@id/logoText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp"/>
+
+    <!-- Message attente -->
+    <TextView
+        android:id="@+id/waitingText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="⏳ Veuillez Patienter..."
+        android:textSize="22sp"
+        android:textColor="#F59E0B"
+        android:layout_marginTop="48dp"
+        app:layout_constraintTop_toBottomOf="@id/titleText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Label MAC -->
+    <TextView
+        android:id="@+id/macLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ADRESSE MAC"
+        android:textSize="11sp"
+        android:textColor="#94A3B8"
+        android:letterSpacing="0.15"
+        android:layout_marginTop="32dp"
+        app:layout_constraintTop_toBottomOf="@id/waitingText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Valeur MAC -->
+    <TextView
+        android:id="@+id/macAddressText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="—"
+        android:textSize="18sp"
+        android:textColor="#E2E8F0"
+        android:fontFamily="monospace"
+        android:layout_marginTop="8dp"
+        app:layout_constraintTop_toBottomOf="@id/macLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Séparateur -->
+    <View
+        android:id="@+id/separator"
+        android:layout_width="200dp"
+        android:layout_height="1dp"
+        android:background="#1E293B"
+        android:layout_marginTop="40dp"
+        app:layout_constraintTop_toBottomOf="@id/macAddressText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Message code activation -->
+    <TextView
+        android:id="@+id/activationLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Vous avez un code d'activation ?"
+        android:textSize="14sp"
+        android:textColor="#94A3B8"
+        android:layout_marginTop="32dp"
+        app:layout_constraintTop_toBottomOf="@id/separator"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Bouton Scanner QR -->
+    <Button
+        android:id="@+id/scanQrButton"
+        android:layout_width="280dp"
+        android:layout_height="56dp"
+        android:text="📷 Scanner le QR Code"
+        android:textSize="16sp"
+        android:textColor="#FFFFFF"
+        android:backgroundTint="#00E5FF"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/activationLabel"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Message bas de page -->
+    <TextView
+        android:id="@+id/footerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="En attente d'activation par KASMOK Admin · Kinshasa, DRC"
+        android:textSize="11sp"
+        android:textColor="#475569"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginBottom="24dp"/>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

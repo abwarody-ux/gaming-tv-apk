@@ -44,6 +44,14 @@
             android:launchMode="singleTop"
             android:screenOrientation="landscape" />
 
+        <!-- PendingActivity -->
+        <activity
+            android:name=".PendingActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="landscape" />
+
         <!-- Boot receiver — relance l'app au démarrage TV -->
         <receiver
             android:name=".BootReceiver"

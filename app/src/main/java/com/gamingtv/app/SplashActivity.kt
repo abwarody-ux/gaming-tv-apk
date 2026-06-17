@@ -1,7 +1,10 @@
 package com.gamingtv.app
 
 import android.animation.*
+import android.content.Context
+import android.content.Intent
 import android.graphics.*
+import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,14 +12,19 @@ import android.view.View
 import android.view.animation.*
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import android.content.Intent
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.io.IOException
 
 class SplashActivity : AppCompatActivity() {
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Fullscreen immersive
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             or View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -27,7 +35,6 @@ class SplashActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_splash)
 
-        // ── SON PS2 AU DÉMARRAGE ──
         SoundManager.playPS2Intro(this)
 
         val logoContainer = findViewById<View>(R.id.logoContainer)
@@ -39,20 +46,14 @@ class SplashActivity : AppCompatActivity() {
         val cornerBL = findViewById<View>(R.id.cornerBL)
         val cornerBR = findViewById<View>(R.id.cornerBR)
 
-        // Appliquer le stroke néon sur GAMING et TV
         applyNeonStroke(textGaming, "#00E5FF")
         applyNeonStroke(textTV, "#00E5FF")
 
-        // ── SÉQUENCE D'ANIMATION ──
-
-        // 0ms: Coins apparaissent
         animateCorners(cornerTL, cornerTR, cornerBL, cornerBR)
 
-        // 300ms: Logo container visible
         Handler(Looper.getMainLooper()).postDelayed({
             logoContainer.alpha = 1f
 
-            // GAMING — slide depuis le haut + fade
             textGaming.translationY = -200f
             textGaming.alpha = 0f
             val gamingAnim = AnimatorSet()
@@ -66,7 +67,6 @@ class SplashActivity : AppCompatActivity() {
             gamingAnim.interpolator = DecelerateInterpolator(2f)
             gamingAnim.start()
 
-            // TV — slide depuis le bas + fade (décalé 200ms)
             Handler(Looper.getMainLooper()).postDelayed({
                 textTV.translationY = 200f
                 textTV.alpha = 0f
@@ -81,24 +81,18 @@ class SplashActivity : AppCompatActivity() {
                 tvAnim.interpolator = DecelerateInterpolator(2f)
                 tvAnim.start()
 
-                // Effet GLITCH après apparition TV
                 Handler(Looper.getMainLooper()).postDelayed({
                     startGlitchLoop(textGaming, textTV)
                 }, 900)
 
-                // Tagline fade in
                 Handler(Looper.getMainLooper()).postDelayed({
-                    textTagline.animate()
-                        .alpha(1f)
-                        .setDuration(800)
-                        .start()
+                    textTagline.animate().alpha(1f).setDuration(800).start()
                 }, 1200)
 
             }, 200)
-
         }, 300)
 
-        // 4500ms: Pulse final + transition vers MainActivity
+        // Après l'animation → vérifier enregistrement TV
         Handler(Looper.getMainLooper()).postDelayed({
             val pulseAnim = AnimatorSet()
             pulseAnim.playTogether(
@@ -110,13 +104,103 @@ class SplashActivity : AppCompatActivity() {
             pulseAnim.interpolator = AccelerateInterpolator()
             pulseAnim.addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    startActivity(Intent(this@SplashActivity, MainActivity::class.java))
-                    overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
-                    finish()
+                    checkTvRegistration()
                 }
             })
             pulseAnim.start()
         }, 4500)
+    }
+
+    private fun checkTvRegistration() {
+        val prefs = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
+        val savedTvId = prefs.getString(Config.KEY_TV_ID, null)
+        val savedStatus = prefs.getString(Config.KEY_TV_STATUS, null)
+
+        if (savedTvId != null && savedStatus == "ACTIVE") {
+            // TV déjà enregistrée et active → aller directement à MainActivity
+            startActivity(Intent(this, MainActivity::class.java))
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+            finish()
+        } else if (savedTvId != null && savedStatus == "PENDING") {
+            // TV en attente → aller à PendingActivity
+            startActivity(Intent(this, PendingActivity::class.java))
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+            finish()
+        } else {
+            // Première connexion → enregistrer la TV
+            registerTv()
+        }
+    }
+
+    private fun registerTv() {
+        val mac = getMacAddress()
+        val prefs = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(Config.KEY_MAC_ADDRESS, mac).apply()
+
+        val json = JSONObject().apply {
+            put("mac_address", mac)
+            put("gps_lat", 0.0)
+            put("gps_lng", 0.0)
+        }
+
+        val body = json.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("${Config.BACKEND_URL}/kasmok/tv-registry/register")
+            .addHeader("x-token", Config.TOKEN)
+            .post(body)
+            .build()
+
+        OkHttpClient().newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                // Réseau indisponible → aller en PENDING local
+                mainHandler.post {
+                    val p = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
+                    p.edit().putString(Config.KEY_TV_STATUS, "PENDING").apply()
+                    startActivity(Intent(this@SplashActivity, PendingActivity::class.java))
+                    finish()
+                }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val body = response.body?.string() ?: return
+                try {
+                    val data = JSONObject(body)
+                    val tvId = data.optString("tv_id", "")
+                    val status = data.optString("status", "PENDING")
+
+                    val p = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
+                    p.edit()
+                        .putString(Config.KEY_TV_ID, tvId)
+                        .putString(Config.KEY_TV_STATUS, status)
+                        .apply()
+
+                    mainHandler.post {
+                        if (status == "ACTIVE") {
+                            startActivity(Intent(this@SplashActivity, MainActivity::class.java))
+                        } else {
+                            startActivity(Intent(this@SplashActivity, PendingActivity::class.java))
+                        }
+                        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+                        finish()
+                    }
+                } catch (e: Exception) {
+                    mainHandler.post {
+                        startActivity(Intent(this@SplashActivity, PendingActivity::class.java))
+                        finish()
+                    }
+                }
+            }
+        })
+    }
+
+    private fun getMacAddress(): String {
+        return try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val wifiInfo = wifiManager.connectionInfo
+            wifiInfo.macAddress ?: "02:00:00:00:00:00"
+        } catch (e: Exception) {
+            "02:00:00:00:00:00"
+        }
     }
 
     private fun applyNeonStroke(tv: TextView, hexColor: String) {

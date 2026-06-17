@@ -59,12 +59,11 @@ class SocketManager(
                     onConnectionChange(false)
                 }
 
-                // ── Session events ──
                 on("SESSION_START") { args ->
                     try {
                         val data = args[0] as JSONObject
                         val session = parseSession(data)
-                        Log.d(TAG, "Session started: ${session.ticketNumber}")
+                        Log.d(TAG, "Session started: ${session.ticketNumber} status=${session.status}")
                         onSessionStart(session)
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing SESSION_START: ${e.message}")
@@ -163,7 +162,6 @@ class SocketManager(
 
     fun isConnected() = isConnected
 
-    // ── Offline timer : 1 min sans connexion → pause ──
     private fun startOfflineTimer() {
         offlineJob = scope.launch {
             delay(Config.OFFLINE_PAUSE_DELAY_MS)
@@ -178,6 +176,7 @@ class SocketManager(
         offlineJob = null
     }
 
+    // ✅ Parse status comme String directement depuis JSON
     private fun parseSession(data: JSONObject): SessionState {
         return SessionState(
             id = data.optString("id", ""),
@@ -185,7 +184,7 @@ class SocketManager(
             ticketNumber = data.optString("ticketNumber", ""),
             durationMinutes = data.optInt("durationMinutes", 0),
             timeRemainingSeconds = data.optInt("timeRemainingSeconds", 0),
-            status = SessionStatus.ACTIVE,
+            status = data.optString("status", "ACTIVE"),
             consoleType = data.optString("consoleType", "PS4"),
             startedAt = data.optString("startedAt", "")
         )
