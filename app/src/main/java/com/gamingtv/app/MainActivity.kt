@@ -1,5 +1,6 @@
 package com.gamingtv.app
 
+import android.content.Context
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -26,12 +27,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timerManager: TimerManager
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    private var tvId: String = "TV00"
     private var currentSession: SessionState? = null
     private var totalDurationSeconds: Int = 0
     private var alertDismissJob: Runnable? = null
     private var blinkAnimation: Animation? = null
 
-    // Kiosk & Pub
     private var kioskMode: Boolean = true
     private var videosPath: String = "/storage/videos/"
     private var pubDurationSeconds: Int = 30
@@ -43,11 +44,10 @@ class MainActivity : AppCompatActivity() {
     private var currentVideoIndex: Int = 0
     private var isPubPlaying: Boolean = false
 
-    // ✅ WAITING_MANAGER
     private var waitingManagerCountdown: CountDownTimer? = null
     private val MANAGER_WAIT_SECONDS = 90L
 
-    private val frontendUrl = "https://statuesque-truffle-4a2771.netlify.app"
+    private val frontendUrl = "https://gaming-tv-frontend.vercel.app"
 
     companion object {
         private const val TAG = "MainActivity"
@@ -64,13 +64,17 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Lire le TV_ID depuis SharedPreferences
+        val prefs = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
+        tvId = prefs.getString(Config.KEY_TV_ID, "TV00") ?: "TV00"
+
         setupUI()
         setupSocketManager()
         setupTimerManager()
         socketManager.connect()
         loadKioskSettings()
 
-        Log.d(TAG, "App started — TV_ID: ${Config.TV_ID}")
+        Log.d(TAG, "App started — TV_ID: $tvId")
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -133,9 +137,8 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // ── QR CODE ──
     private fun showQrCode(ticketNumber: String, consoleType: String) {
-        val url = "$frontendUrl/addtime?tv=${Config.TV_ID}&ticket=$ticketNumber&console=$consoleType"
+        val url = "$frontendUrl/addtime?tv=$tvId&ticket=$ticketNumber&console=$consoleType"
         binding.qrCodeView.setQrData(url, "#$ticketNumber")
         binding.qrCodeView.visibility = View.VISIBLE
         binding.qrCodeViewPause.setQrData(url, "#$ticketNumber")
@@ -147,7 +150,6 @@ class MainActivity : AppCompatActivity() {
         binding.qrCodeViewPause.visibility = View.GONE
     }
 
-    // ── PUB VIDÉO ──
     private fun loadVideoFiles() {
         val folder = File(videosPath)
         videoFiles = if (folder.exists() && folder.isDirectory) {
@@ -200,9 +202,8 @@ class MainActivity : AppCompatActivity() {
         videoView = null
     }
 
-    // ── UI SETUP ──
     private fun setupUI() {
-        binding.tvId.text = "TV ${Config.TV_ID}"
+        binding.tvId.text = "TV $tvId"
         binding.consoleBadge.text = "—"
         binding.alertContainer.visibility = View.GONE
         showWaitingState()
@@ -210,6 +211,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupSocketManager() {
         socketManager = SocketManager(
+            tvId = tvId,
             onSessionStart = { session -> mainHandler.post { handleSessionStart(session) } },
             onTimeSync = { seconds, status -> mainHandler.post { handleTimeSync(seconds, status) } },
             onSessionPause = { mainHandler.post { handleSessionPause() } },
@@ -239,46 +241,34 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    // ── SESSION HANDLERS ──
     private fun handleSessionStart(session: SessionState) {
         Log.d(TAG, "Session started: ${session.ticketNumber}")
-
-        // Si c'est une session WAITING_MANAGER → afficher écran d'attente manager
         if (session.status == "WAITING_MANAGER") {
             handleWaitingManager(session)
             return
         }
-
-        // Session ACTIVE normale
         startActiveSession(session)
     }
 
-    // ✅ WAITING_MANAGER — Écran d'attente avec countdown 90s
     private fun handleWaitingManager(session: SessionState) {
         currentSession = session
         stopPub()
         stopInactivityTimer()
         cancelManagerCountdown()
 
-        // Afficher écran waiting manager
         binding.waitingScreen.visibility = View.GONE
         binding.sessionOverlay.visibility = View.GONE
         binding.pauseScreen.visibility = View.GONE
         binding.endScreen.visibility = View.GONE
-
-        // Réutiliser le waitingScreen avec un message spécial
         binding.waitingScreen.visibility = View.VISIBLE
 
-        // Mettre à jour le contenu de l'écran d'attente
         binding.tvId.text = "#${session.ticketNumber}"
         binding.connectionText.text = "EN ATTENTE DU MANAGER"
         binding.connectionText.setTextColor(Color.parseColor(COLOR_BLUE))
         binding.connectionDot.setBackgroundColor(Color.parseColor(COLOR_BLUE))
 
-        // Alerte persistante
         showPersistentManagerAlert(session)
 
-        // Countdown 90s
         waitingManagerCountdown = object : CountDownTimer(MANAGER_WAIT_SECONDS * 1000, 1000) {
             override fun onTick(millisUntilFinished: Long) {
                 val seconds = millisUntilFinished / 1000
@@ -290,10 +280,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             override fun onFinish() {
-                // Auto-start déclenché côté backend — ici juste mise à jour UI
-                mainHandler.post {
-                    binding.alertContainer.visibility = View.GONE
-                }
+                mainHandler.post { binding.alertContainer.visibility = View.GONE }
             }
         }.start()
     }
@@ -305,7 +292,6 @@ class MainActivity : AppCompatActivity() {
         })
         binding.alertText.setTextColor(Color.parseColor(COLOR_WHITE))
         binding.alertContainer.visibility = View.VISIBLE
-        // Pas de dismiss automatique — restera visible jusqu'au start
         alertDismissJob?.let { mainHandler.removeCallbacks(it) }
     }
 
@@ -322,7 +308,7 @@ class MainActivity : AppCompatActivity() {
         stopPub()
         stopInactivityTimer()
 
-        binding.tvId.text = "TV ${Config.TV_ID}"
+        binding.tvId.text = "TV $tvId"
         binding.ticketNumber.text = "#${session.ticketNumber}"
         binding.consoleBadge.text = session.consoleType
         binding.statusText.text = "EN JEU"
@@ -343,9 +329,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleTimeSync(seconds: Int, status: String) {
-        // Si status WAITING_MANAGER → ne pas démarrer le timer
         if (status == "WAITING_MANAGER") return
-        // Si on était en WAITING_MANAGER et maintenant ACTIVE → démarrer
         if (currentSession?.status == "WAITING_MANAGER" && status == "ACTIVE") {
             currentSession?.let { startActiveSession(it.copy(timeRemainingSeconds = seconds, status = "ACTIVE")) }
             return
@@ -435,7 +419,7 @@ class MainActivity : AppCompatActivity() {
         binding.endScreen.visibility = View.GONE
         binding.alertContainer.visibility = View.GONE
         hideQrCode()
-        binding.tvId.text = "TV ${Config.TV_ID}"
+        binding.tvId.text = "TV $tvId"
         binding.ticketNumber.text = "—"
         binding.consoleBadge.text = "—"
         binding.statusText.text = "EN ATTENTE"

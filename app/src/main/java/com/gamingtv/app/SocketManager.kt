@@ -8,6 +8,7 @@ import org.json.JSONObject
 import java.net.URI
 
 class SocketManager(
+    private val tvId: String,
     private val onSessionStart: (SessionState) -> Unit,
     private val onTimeSync: (Int, String) -> Unit,
     private val onSessionPause: () -> Unit,
@@ -33,7 +34,7 @@ class SocketManager(
                 reconnection = true
                 reconnectionDelay = Config.RECONNECT_DELAY_MS
                 reconnectionAttempts = Int.MAX_VALUE
-                query = "role=tv&tvId=${Config.TV_ID}&token=${Config.TOKEN}"
+                query = "role=tv&tvId=${tvId}&token=${Config.TOKEN}"
             }
 
             socket = IO.socket(URI.create(Config.BACKEND_URL), options)
@@ -149,13 +150,13 @@ class SocketManager(
 
     fun emitSessionPaused() {
         socket?.emit("SESSION_PAUSED", JSONObject().apply {
-            put("tvId", Config.TV_ID)
+            put("tvId", tvId)
         })
     }
 
     fun emitSessionEndedLocal(timeRemaining: Int) {
         socket?.emit("SESSION_ENDED_LOCAL", JSONObject().apply {
-            put("tvId", Config.TV_ID)
+            put("tvId", tvId)
             put("timeRemaining", timeRemaining)
         })
     }
@@ -176,11 +177,10 @@ class SocketManager(
         offlineJob = null
     }
 
-    // ✅ Parse status comme String directement depuis JSON
     private fun parseSession(data: JSONObject): SessionState {
         return SessionState(
             id = data.optString("id", ""),
-            tvId = data.optString("tvId", Config.TV_ID),
+            tvId = data.optString("tvId", tvId),
             ticketNumber = data.optString("ticketNumber", ""),
             durationMinutes = data.optInt("durationMinutes", 0),
             timeRemainingSeconds = data.optInt("timeRemainingSeconds", 0),
