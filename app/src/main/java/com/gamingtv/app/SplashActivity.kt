@@ -194,13 +194,29 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun getMacAddress(): String {
-        return try {
-            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val wifiInfo = wifiManager.connectionInfo
-            wifiInfo.macAddress ?: "02:00:00:00:00:00"
-        } catch (e: Exception) {
-            "02:00:00:00:00:00"
+        // Essai 1 : interfaces réseau
+        try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val iface = interfaces.nextElement()
+                val mac = iface.hardwareAddress
+                if (mac != null && mac.size == 6) {
+                    val macStr = mac.joinToString(":") { "%02X".format(it) }
+                    if (macStr != "02:00:00:00:00:00" && macStr != "00:00:00:00:00:00") {
+                        return macStr
+                    }
+                }
+            }
+        } catch (e: Exception) { }
+        // Fallback : ANDROID_ID
+        val androidId = android.provider.Settings.Secure.getString(
+            contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID
+        )
+        if (!androidId.isNullOrEmpty() && androidId != "9774d56d682e549c") {
+            return "ANDROID-" + androidId.uppercase()
         }
+        return "UNKNOWN-" + System.currentTimeMillis()
     }
 
     private fun applyNeonStroke(tv: TextView, hexColor: String) {
