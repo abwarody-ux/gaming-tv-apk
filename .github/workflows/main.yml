@@ -27,7 +27,7 @@ jobs:
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/kasmok-release.jks
 
-      - name: Build Release APK
+      - name: Build Release APK (signed by Gradle)
         run: ./gradlew assembleRelease --stacktrace
         env:
           KEYSTORE_PATH: kasmok-release.jks
@@ -35,19 +35,9 @@ jobs:
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
-      - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
-        id: sign_app
-        with:
-          releaseDirectory: app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.KEYSTORE_PASSWORD }}
-
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: GamingTV-Android14-release
-          path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+          path: app/build/outputs/apk/release/app-release.apk
           retention-days: 90
