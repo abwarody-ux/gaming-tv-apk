@@ -1,32 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.RECEIVE_LOCKED_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-
-    <!-- Kiosk Mode -->
     <uses-permission android:name="android.permission.REORDER_TASKS" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
-
-    <!-- TV Support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
-
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.GamingTV"
         android:usesCleartextTraffic="true">
-
-        <!-- SplashActivity = LAUNCHER -->
         <activity
             android:name=".SplashActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
             android:exported="true"
+            android:directBootAware="true"
             android:launchMode="singleTop"
             android:screenOrientation="landscape">
             <intent-filter>
@@ -37,41 +31,36 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
-
-        <!-- MainActivity -->
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
             android:exported="false"
+            android:directBootAware="true"
             android:launchMode="singleTop"
             android:screenOrientation="landscape" />
-
-        <!-- PendingActivity -->
         <activity
             android:name=".PendingActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
             android:exported="false"
+            android:directBootAware="true"
             android:launchMode="singleTop"
             android:screenOrientation="landscape" />
-
-        <!-- QrScannerActivity -->
         <activity
             android:name=".QrScannerActivity"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize"
             android:exported="false"
+            android:directBootAware="true"
             android:launchMode="singleTop"
             android:screenOrientation="landscape" />
-
-        <!-- Boot receiver — relance l'app au démarrage TV -->
         <receiver
             android:name=".BootReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:directBootAware="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-
     </application>
-
 </manifest>
