@@ -1,8 +1,8 @@
 package com.gamingtv.app
 
 object Config {
-    const val BACKEND_URL = "https://gaming-tv-backend-production.up.railway.app"
-    const val TOKEN = "gaming-tv-test-2025"
+    const val BACKEND_URL = "https://api.kasmokgroup.com"
+    const val TOKEN = "" // Token statique supprime - endpoints publics utilises directement
 
     // Timings
     const val OFFLINE_PAUSE_DELAY_MS = 60_000L
