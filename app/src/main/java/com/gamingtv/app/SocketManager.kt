@@ -162,6 +162,13 @@ class SocketManager(
         })
     }
 
+    fun emitSessionStartedLocal(startedAtIso: String, offlineTriggered: Boolean) {
+        socket?.emit("SESSION_STARTED_LOCAL", JSONObject().apply {
+            put("startedAt", startedAtIso)
+            put("offlineTriggered", offlineTriggered)
+        })
+    }
+
     fun isConnected() = isConnected
 
     private fun startOfflineTimer() {

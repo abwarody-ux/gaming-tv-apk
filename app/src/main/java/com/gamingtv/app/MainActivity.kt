@@ -51,6 +51,9 @@ class MainActivity : AppCompatActivity() {
 
     private var waitingManagerCountdown: CountDownTimer? = null
     private val MANAGER_WAIT_SECONDS = 90L
+    private var offlineAutoStartCountdown: CountDownTimer? = null
+    private var startedOfflineLocally: Boolean = false
+    private var offlineStartedAtIso: String = ""
 
     private val frontendUrl = "https://gaming-tv-frontend.vercel.app"
 
@@ -314,6 +317,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleSessionStart(session: SessionState) {
+        cancelOfflineAutoStartCountdown()
         Log.d(TAG, "Session started: ${session.ticketNumber}")
         if (session.status == "WAITING_MANAGER") {
             handleWaitingManager(session)
@@ -352,9 +356,37 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             override fun onFinish() {
-                mainHandler.post { binding.alertContainer.visibility = View.GONE }
+                mainHandler.post {
+                    binding.alertContainer.visibility = View.GONE
+                    if (!socketManager.isConnected()) {
+                        startOfflineAutoStartCountdown(session)
+                    }
+                }
             }
         }.start()
+    }
+
+    private fun startOfflineAutoStartCountdown(session: SessionState) {
+        cancelOfflineAutoStartCountdown()
+        offlineAutoStartCountdown = object : CountDownTimer(MANAGER_WAIT_SECONDS * 1000, 1000) {
+            override fun onTick(millisUntilFinished: Long) {}
+            override fun onFinish() {
+                mainHandler.post {
+                    if (!socketManager.isConnected() && currentSession?.status == "WAITING_MANAGER") {
+                        val nowIso = java.time.Instant.now().toString()
+                        offlineStartedAtIso = nowIso
+                        startedOfflineLocally = true
+                        Log.w(TAG, "Demarrage automatique hors-ligne — coupure reseau prolongee")
+                        startActiveSession(session.copy(status = "ACTIVE"))
+                    }
+                }
+            }
+        }.start()
+    }
+
+    private fun cancelOfflineAutoStartCountdown() {
+        offlineAutoStartCountdown?.cancel()
+        offlineAutoStartCountdown = null
     }
 
     private fun showPersistentManagerAlert(session: SessionState) {
@@ -513,6 +545,13 @@ class MainActivity : AppCompatActivity() {
         if (!connected && currentSession != null) {
             showAlert("Connexion perdue — timer local actif", "WARNING")
         }
+        if (connected) {
+            cancelOfflineAutoStartCountdown()
+            if (startedOfflineLocally) {
+                socketManager.emitSessionStartedLocal(offlineStartedAtIso, true)
+                startedOfflineLocally = false
+            }
+        }
     }
 
     private fun showAlert(message: String, type: String = "INFO", durationMs: Long = 4000) {
@@ -552,6 +591,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         cancelManagerCountdown()
+        cancelOfflineAutoStartCountdown()
         stopPub()
         stopInactivityTimer()
         timerManager.destroy()
