@@ -1,5 +1,7 @@
 package com.gamingtv.app
 
+import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.graphics.Color
 import android.net.Uri
@@ -82,7 +84,10 @@ class MainActivity : AppCompatActivity() {
             if (keyCode == KeyEvent.KEYCODE_BACK ||
                 keyCode == KeyEvent.KEYCODE_HOME ||
                 keyCode == KeyEvent.KEYCODE_APP_SWITCH ||
-                keyCode == KeyEvent.KEYCODE_MENU) return true
+                keyCode == KeyEvent.KEYCODE_MENU) {
+                showAlert("Veuillez contacter KASMOK DIGITAL pour cette action", "WARNING", 3000)
+                return true
+            }
         }
         return super.onKeyDown(keyCode, event)
     }
@@ -102,7 +107,24 @@ class MainActivity : AppCompatActivity() {
                 or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
             )
-            if (kioskMode) window.decorView.postDelayed({ startLockTask() }, 100)
+            if (kioskMode) window.decorView.postDelayed({ enableKioskModeIfPossible() }, 100)
+        }
+    }
+
+    private fun enableKioskModeIfPossible() {
+        try {
+            val dpm = getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val adminComponent = ComponentName(this, AdminReceiver::class.java)
+            if (dpm.isDeviceOwnerApp(packageName)) {
+                dpm.setLockTaskPackages(adminComponent, arrayOf(packageName))
+                startLockTask()
+                Log.d(TAG, "Kiosk mode: Device Owner actif — lock task silencieux")
+            } else {
+                startLockTask()
+                Log.d(TAG, "Kiosk mode: pas Device Owner — screen pinning standard (confirmation utilisateur requise)")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Kiosk mode: échec activation — ${e.message}")
         }
     }
 
@@ -126,7 +148,7 @@ class MainActivity : AppCompatActivity() {
                     pubDurationSeconds = json.optInt("pubDurationSeconds", 30)
                     inactivityBeforePubSeconds = json.optInt("inactivityBeforePubSeconds", 60)
                     mainHandler.post {
-                        if (kioskMode) { try { startLockTask() } catch (e: Exception) { } }
+                        if (kioskMode) enableKioskModeIfPossible()
                         loadVideoFiles()
                         startInactivityTimer()
                     }
@@ -443,7 +465,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showAlert(message: String, type: String = "INFO") {
+    private fun showAlert(message: String, type: String = "INFO", durationMs: Long = 4000) {
         binding.alertText.text = message
         val color = when (type) {
             "SUCCESS" -> COLOR_GREEN
@@ -459,7 +481,7 @@ class MainActivity : AppCompatActivity() {
 
         alertDismissJob?.let { mainHandler.removeCallbacks(it) }
         alertDismissJob = Runnable { binding.alertContainer.visibility = View.GONE }
-        mainHandler.postDelayed(alertDismissJob!!, 4000)
+        mainHandler.postDelayed(alertDismissJob!!, durationMs)
     }
 
     private fun startBlinkAnimation() {
