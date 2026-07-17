@@ -131,8 +131,7 @@ class MainActivity : AppCompatActivity() {
     private fun loadKioskSettings() {
         val client = OkHttpClient()
         val request = Request.Builder()
-            .url("${Config.BACKEND_URL}/settings")
-            .addHeader("Authorization", "Bearer ${Config.TOKEN}")
+            .url("${Config.BACKEND_URL}/kasmok/tv-registry/$tvId/settings")
             .build()
 
         client.newCall(request).enqueue(object : Callback {
