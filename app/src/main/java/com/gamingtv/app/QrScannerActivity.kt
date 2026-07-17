@@ -77,11 +77,13 @@ class QrScannerActivity : AppCompatActivity() {
                             val data = JSONObject(bodyStr)
                             val tvId = data.optString("tv_id", "")
                             val status = data.optString("status", "")
+                            val tvToken = data.optString("tv_token", "")
 
                             val prefs = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
                             prefs.edit()
                                 .putString(Config.KEY_TV_ID, tvId)
                                 .putString(Config.KEY_TV_STATUS, status)
+                                .putString(Config.KEY_TV_TOKEN, tvToken)
                                 .apply()
 
                             Toast.makeText(this@QrScannerActivity, "TV activée ✅", Toast.LENGTH_SHORT).show()

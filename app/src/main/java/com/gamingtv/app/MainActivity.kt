@@ -18,6 +18,8 @@ import android.widget.VideoView
 import androidx.appcompat.app.AppCompatActivity
 import com.gamingtv.app.databinding.ActivityMainBinding
 import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -30,6 +32,7 @@ class MainActivity : AppCompatActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private var tvId: String = "TV00"
+    private var tvToken: String = ""
     private var currentSession: SessionState? = null
     private var totalDurationSeconds: Int = 0
     private var alertDismissJob: Runnable? = null
@@ -66,17 +69,64 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Lire le TV_ID depuis SharedPreferences
+        // Lire le TV_ID et le tv_token depuis SharedPreferences
         val prefs = getSharedPreferences(Config.PREFS_NAME, Context.MODE_PRIVATE)
         tvId = prefs.getString(Config.KEY_TV_ID, "TV00") ?: "TV00"
+        tvToken = prefs.getString(Config.KEY_TV_TOKEN, "") ?: ""
 
         setupUI()
-        setupSocketManager()
         setupTimerManager()
-        socketManager.connect()
         loadKioskSettings()
 
+        if (tvToken.isNotEmpty()) {
+            setupSocketManager()
+            socketManager.connect()
+        } else {
+            // TV activee avant le correctif de securite — rattrapage via mac_address deja connue
+            ensureTvTokenThenConnect(prefs)
+        }
+
         Log.d(TAG, "App started — TV_ID: $tvId")
+    }
+
+    private fun ensureTvTokenThenConnect(prefs: android.content.SharedPreferences) {
+        val mac = prefs.getString(Config.KEY_MAC_ADDRESS, null)
+        if (mac.isNullOrEmpty()) {
+            Log.e(TAG, "Impossible de recuperer un tv_token: mac_address inconnue localement")
+            return
+        }
+        val json = JSONObject().apply { put("mac_address", mac) }
+        val body = json.toString().toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("${Config.BACKEND_URL}/kasmok/tv-registry/token-by-mac")
+            .post(body)
+            .build()
+
+        OkHttpClient().newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                Log.e(TAG, "Rattrapage tv_token echoue (reseau): ${e.message}")
+            }
+            override fun onResponse(call: Call, response: Response) {
+                val bodyStr = response.body?.string() ?: return
+                if (!response.isSuccessful) {
+                    Log.e(TAG, "Rattrapage tv_token echoue: $bodyStr")
+                    return
+                }
+                try {
+                    val data = JSONObject(bodyStr)
+                    val newToken = data.optString("tv_token", "")
+                    if (newToken.isEmpty()) return
+                    tvToken = newToken
+                    prefs.edit().putString(Config.KEY_TV_TOKEN, newToken).apply()
+                    mainHandler.post {
+                        setupSocketManager()
+                        socketManager.connect()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Erreur parsing rattrapage tv_token: ${e.message}")
+                }
+            }
+        })
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -233,6 +283,7 @@ class MainActivity : AppCompatActivity() {
     private fun setupSocketManager() {
         socketManager = SocketManager(
             tvId = tvId,
+            tvToken = tvToken,
             onSessionStart = { session -> mainHandler.post { handleSessionStart(session) } },
             onTimeSync = { seconds, status -> mainHandler.post { handleTimeSync(seconds, status) } },
             onSessionPause = { mainHandler.post { handleSessionPause() } },

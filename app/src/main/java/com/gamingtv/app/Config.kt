@@ -15,4 +15,5 @@ object Config {
     const val KEY_TV_ID = "tv_id"
     const val KEY_TV_STATUS = "tv_status"
     const val KEY_MAC_ADDRESS = "mac_address"
+    const val KEY_TV_TOKEN = "tv_token"
 }

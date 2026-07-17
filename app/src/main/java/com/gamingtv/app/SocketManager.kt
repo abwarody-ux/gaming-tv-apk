@@ -9,6 +9,7 @@ import java.net.URI
 
 class SocketManager(
     private val tvId: String,
+    private val tvToken: String,
     private val onSessionStart: (SessionState) -> Unit,
     private val onTimeSync: (Int, String) -> Unit,
     private val onSessionPause: () -> Unit,
@@ -34,7 +35,7 @@ class SocketManager(
                 reconnection = true
                 reconnectionDelay = Config.RECONNECT_DELAY_MS
                 reconnectionAttempts = Int.MAX_VALUE
-                query = "role=tv&tvId=${tvId}&token=${Config.TOKEN}"
+                query = "role=tv&tvId=${tvId}&token=${tvToken}"
             }
 
             socket = IO.socket(URI.create(Config.BACKEND_URL), options)
